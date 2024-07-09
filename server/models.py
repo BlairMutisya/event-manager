@@ -2,8 +2,9 @@ from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token
+from .config import *
 
-db = SQLAlchemy()
+db = SQLAlchemy(metadata=metadata)
 bcrypt = Bcrypt()
 
 # User model
