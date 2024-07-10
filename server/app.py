@@ -7,18 +7,24 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
 from functools import wraps
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity
+import random
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})  # Apply CORS to your Flask app
 
 # Configurations
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your_secret_key'  # Replace with a strong secret key
+app.config['JWT_SECRET_KEY'] = 'fdvayudfaihfuhaeuifh' + str(random.randint(1, 1000000000000))  # Replace with a strong secret key
+app.config['SECRET_KEY'] = 'GHCYFYTFTYFGHVYJG' + str(random.randint(1, 1000000000000))
 
 # Initialize the database
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 migrate = Migrate(app, db)  # Set up Flask-Migrate
+jwt = JWTManager(app)  # Initialize JWT Manager
 
 # Define the User model
 class User(db.Model):
@@ -129,8 +135,15 @@ def login():
     if not user or not check_password_hash(user.password, data['password']):
         return jsonify({'message': 'Invalid credentials'}), 401
 
-    token = jwt.encode({'id': user.id, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)}, app.config['SECRET_KEY'], algorithm="HS256")
+    token = create_access_token(identity=user.id, expires_delta=datetime.timedelta(hours=24))
     return jsonify({'token': token})
+
+
+# Handle preflight requests
+@app.before_request
+def handle_preflight():
+    if request.method == 'OPTIONS':
+        return Response(status=204)
 
 # CRUD operations for User
 @app.route('/users', methods=['GET'])
@@ -210,30 +223,38 @@ def delete_reservation(current_user, id):
     db.session.commit()
     return jsonify({'message': 'Reservation deleted'})
 
-# CRUD operations for Event (existing code)
-@app.route('/events', methods=['POST'])
+# CRUD operations for Event
+@app.route('/events', methods=['POST', 'OPTIONS'])
 @token_required
 def add_event(current_user):
-    data = request.get_json()
-    new_event = Event(
-        title=data['title'],
-        description=data['description'],
-        date=data['date'],
-        location=data['location'],
-        medium=data['medium'],
-        start_date=data['startDate'],
-        end_date=data['endDate'],
-        start_time=data['startTime'],
-        end_time=data['endTime'],
-        max_participants=data['maxParticipants'],
-        category=data['category'],
-        accept_reservation=data['acceptReservation'],
-        image_url=data['imageUrl'],
-        user_id=current_user.id
-    )
-    db.session.add(new_event)
-    db.session.commit()
-    return event_schema.jsonify(new_event)
+    if request.method == 'OPTIONS':
+        return Response(status=204)
+    try:
+        data = request.get_json()
+        new_event = Event(
+            title=data['title'],
+            description=data['description'],
+            date=data['date'],
+            location=data['location'],
+            medium=data['medium'],
+            start_date=data['startDate'],
+            end_date=data['endDate'],
+            start_time=data['startTime'],
+            end_time=data['endTime'],
+            max_participants=data['maxParticipants'],
+            category=data['category'],
+            accept_reservation=data['acceptReservation'],
+            image_url=data['imageUrl'],
+            user_id=current_user.id
+        )
+        db.session.add(new_event)
+        db.session.commit()
+        return event_schema.jsonify(new_event), 201
+    except Exception as e:
+        print(f"Error adding event: {str(e)}")
+        return jsonify({'message': 'Error adding event'}), 500
+
+
 
 @app.route('/events', methods=['GET'])
 @token_required
@@ -278,7 +299,7 @@ def delete_event(current_user, id):
     return jsonify({'message': 'Event deleted'})
 
 # CRUD operations for Contact
-@app.route('/contacts', methods=['POST'])
+@app.route('/contact', methods=['POST'])
 def add_contact():
     data = request.get_json()
     new_contact = Contact(
@@ -290,19 +311,19 @@ def add_contact():
     db.session.commit()
     return contact_schema.jsonify(new_contact)
 
-@app.route('/contacts', methods=['GET'])
+@app.route('/contact', methods=['GET'])
 @token_required
 def get_contacts(current_user):
     all_contacts = Contact.query.all()
     return contacts_schema.jsonify(all_contacts)
 
-@app.route('/contacts/<id>', methods=['GET'])
+@app.route('/contact/<id>', methods=['GET'])
 @token_required
 def get_contact(current_user, id):
     contact = Contact.query.get_or_404(id)
     return contact_schema.jsonify(contact)
 
-@app.route('/contacts/<id>', methods=['PUT'])
+@app.route('/contact/<id>', methods=['PUT'])
 @token_required
 def update_contact(current_user, id):
     contact = Contact.query.get_or_404(id)
@@ -313,7 +334,7 @@ def update_contact(current_user, id):
     db.session.commit()
     return contact_schema.jsonify(contact)
 
-@app.route('/contacts/<id>', methods=['DELETE'])
+@app.route('/contact/<id>', methods=['DELETE'])
 @token_required
 def delete_contact(current_user, id):
     contact = Contact.query.get_or_404(id)
